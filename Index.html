@@ -1,0 +1,62 @@
+import multiprocessing
+from flask import Flask, render_template_string, request, redirect, url_for
+from discord.ext import commands
+import discord
+
+app = Flask(__name__)
+app.secret_key = "chave_secreta_dashboard"
+
+# Dicionário global para guardar o processo do bot
+bots_ativos = {}
+
+def rodar_bot(token):
+    """Função que o processo separado vai executar"""
+    intents = discord.Intents.default()
+    bot = commands.Bot(command_prefix="!", intents=intents)
+
+    @bot.event
+    async def on_ready():
+        print(f"Bot {bot.user} está ONLINE!")
+
+    try:
+        bot.run(token)
+    except Exception as e:
+        print(f"Erro ao ligar o bot: {e}")
+
+@app.route("/")
+def index():
+    status = "Online" if bots_ativos else "Offline"
+    return render_template_string("""
+        <h1>Controle do Bot</h1>
+        <p>Status atual: <strong>{{ status }}</strong></p>
+        
+        <form action="/ligar" method="post">
+            <input type="text" name="token" placeholder="Cole o Token do Bot aqui" style="width: 300px;">
+            <button type="submit">Ligar Bot</button>
+        </form>
+        
+        <br>
+        <form action="/desligar" method="post">
+            <button type="submit" style="color: red;">Desligar Bot</button>
+        </form>
+    """, status=status)
+
+@app.route("/ligar", method=["POST"])
+def ligar():
+    token = request.form.get("token")
+    if token and not bots_ativos:
+        # Cria um processo separado para o bot
+        p = multiprocessing.Process(target=rodar_bot, args=(token,))
+        p.start()
+        bots_ativos['meu_bot'] = p
+    return redirect(url_for("index"))
+
+@app.route("/desligar", method=["POST"])
+def desligar():
+    if bots_ativos:
+        p = bots_ativos.pop('meu_bot')
+        p.terminate() # Mata o processo do bot
+    return redirect(url_for("index"))
+
+if __name__ == "__main__":
+    app.run(debug=True)
